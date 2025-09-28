@@ -1,0 +1,557 @@
+--2. CREACIÓN DE BASE DE DATOS KEEPCODING
+
+CREATE TABLE alumnos (
+    id_alumno SERIAL PRIMARY KEY ,
+    nombre VARCHAR(100) NOT NULL,
+    apellido VARCHAR(100) NOT NULL,
+    tipo_contacto VARCHAR(50),
+    direccion VARCHAR(200),
+    cp VARCHAR(10),
+    ciudad VARCHAR(100),
+    pais VARCHAR(100),
+    email VARCHAR(150) UNIQUE NOT NULL,
+    contrasena VARCHAR(100) NOT NULL,
+    telefono VARCHAR(20),
+    fecha_registro DATE
+);
+
+
+
+CREATE TABLE profesores (
+    id_profesor SERIAL PRIMARY KEY ,
+    nombre VARCHAR(100) NOT NULL,
+    apellido VARCHAR(100) NOT NULL,
+    direccion VARCHAR(200),
+    cp VARCHAR(10),
+    ciudad VARCHAR(100),
+    pais VARCHAR(100),
+    email VARCHAR(150) UNIQUE NOT NULL,
+    password VARCHAR(100) NOT NULL,
+    telefono VARCHAR(20)
+);
+
+
+CREATE TABLE bootcamps (
+    id_bootcamp  SERIAL PRIMARY KEY ,
+    nombre_bootcamp VARCHAR(150) NOT NULL,
+    fecha_inicio DATE,
+    fecha_fin DATE,
+    edicion VARCHAR(50)
+);
+
+
+CREATE TABLE modulos (
+    id_modulo  SERIAL PRIMARY KEY ,
+    id_bootcamp INT NOT NULL,
+    id_profesor INT NOT NULL,
+    nombre VARCHAR(150) NOT NULL,
+    horas INT,
+    tipo_recurso VARCHAR(50),
+    FOREIGN KEY (id_bootcamp) REFERENCES bootcamps(id_bootcamp),
+    FOREIGN KEY (id_profesor) REFERENCES profesores(id_profesor)
+);
+
+
+CREATE TABLE matriculas (
+    id_matricula  SERIAL PRIMARY KEY ,
+    id_alumno INT NOT NULL,
+    id_bootcamp INT NOT NULL,
+    fecha_matricula DATE,
+    FOREIGN KEY (id_alumno) REFERENCES alumnos(id_alumno),
+    FOREIGN KEY (id_bootcamp) REFERENCES bootcamps(id_bootcamp)
+);
+
+
+CREATE TABLE cobros (
+    id_cobro  SERIAL PRIMARY KEY ,
+    id_matricula INT NOT NULL,
+    fecha DATE,
+    estado VARCHAR(50),
+    coste DECIMAL(10,2) NOT NULL,
+    metodo_pago VARCHAR(50),
+    FOREIGN KEY (id_matricula) REFERENCES matriculas(id_matricula)
+);
+
+
+CREATE TABLE servicios (
+    id_servicio  SERIAL PRIMARY KEY ,
+    nombre VARCHAR(150) NOT NULL,
+    tipo_servicio VARCHAR(100),
+    precio DECIMAL(10,2)
+);
+
+
+CREATE TABLE pagos (
+    id_pago  SERIAL PRIMARY KEY ,
+    id_profesor INT NULL,
+    id_servicio INT NULL,
+    metodo_pago VARCHAR(50),
+    coste DECIMAL(10,2),
+    fecha DATE,
+    FOREIGN KEY (id_profesor) REFERENCES profesores(id_profesor),
+    FOREIGN KEY (id_servicio) REFERENCES servicios(id_servicio)
+);
+
+
+CREATE TABLE evaluaciones (
+    id_evaluacion  SERIAL PRIMARY KEY ,
+    id_modulo INT NOT NULL,
+    tipo VARCHAR(50),
+    fecha DATE,
+    FOREIGN KEY (id_modulo) REFERENCES modulos(id_modulo)
+);
+
+
+CREATE TABLE notas (
+    id_nota  SERIAL PRIMARY KEY ,
+    id_alumno INT NOT NULL,
+    id_evaluacion INT NOT NULL,
+    calificacion DECIMAL(5,2),
+    is_passed BOOLEAN,
+    fecha DATE,
+    observaciones VARCHAR(250),
+    FOREIGN KEY (id_alumno) REFERENCES alumnos(id_alumno),
+    FOREIGN KEY (id_evaluacion) REFERENCES evaluaciones(id_evaluacion)
+);
+
+
+--3. CREAR TABLA DE ivr_detail.
+
+CREATE OR REPLACE TABLE keepcoding.ivr_calls AS
+SELECT 
+  CAST(ivr_id AS STRING) AS ivr_id,
+  phone_number,
+  ivr_result,
+  vdn_label,
+  start_date,
+  end_date,
+  total_duration,
+  customer_segment,
+  ivr_language,
+  steps_module,
+  module_aggregation
+FROM keepcoding.ivr_calls;  
+
+
+
+
+
+CREATE OR REPLACE TABLE keepcoding.ivr_modules AS
+SELECT
+CAST(ivr_id AS STRING) AS ivr_id,
+module_sequece ,
+module_name ,
+module_duration,
+module_result  
+FROM keepcoding.ivr_modules;
+
+
+CREATE OR REPLACE TABLE keepcoding.ivr_steps AS
+SELECT
+
+CAST(ivr_id AS STRING) AS ivr_id,
+module_sequece  ,
+step_sequence ,
+step_name ,
+step_result ,
+step_description_error ,
+document_type ,
+document_identification ,
+customer_phone ,
+billing_account_id 
+
+FROM keepcoding.ivr_steps;
+
+
+
+ALTER TABLE keepcoding.ivr_calls
+ADD COLUMN start_date_id INT64;
+
+ALTER TABLE keepcoding.ivr_calls
+ADD COLUMN end_date_id INT64;
+
+UPDATE keepcoding.ivr_calls
+SET 
+  start_date_id = CAST(FORMAT_DATE('%Y%m%d', DATE(start_date)) AS INT64),
+  end_date_id   = CAST(FORMAT_DATE('%Y%m%d', DATE(end_date))   AS INT64)
+WHERE TRUE;
+
+CREATE OR REPLACE TABLE keepcoding.ivr_detail AS
+SELECT
+    calls.ivr_id,
+    calls.phone_number,
+    calls.ivr_result,
+    calls.vdn_label,
+    calls.start_date,
+    calls.start_date_id,
+    calls.end_date,
+    calls.end_date_id,
+    calls.total_duration,
+    calls.customer_segment,
+    calls.ivr_language,
+    calls.steps_module,
+    calls.module_aggregation,
+    mod.module_sequece,
+    mod.module_name,
+    mod.module_duration,
+    mod.module_result,
+    step.step_sequence,
+    step.step_name,
+    step.step_result,
+    step.step_description_error,
+    step.document_type,
+    step.document_identification,
+    step.customer_phone,
+    step.billing_account_id
+
+FROM keepcoding.ivr_calls   AS calls
+LEFT JOIN keepcoding.ivr_modules AS mod
+    ON calls.ivr_id = mod.ivr_id
+LEFT JOIN keepcoding.ivr_steps   AS step
+    ON calls.ivr_id = step.ivr_id
+   AND mod.module_sequece = step.module_sequece;
+   
+--4. Generar el campo vdn_aggregation
+
+SELECT
+  ivr_id AS calls_ivr_id,
+  CASE
+    WHEN STARTS_WITH(vdn_label, 'ATC')  THEN 'FRONT'
+    WHEN STARTS_WITH(vdn_label, 'TECH') THEN 'TECH'
+    WHEN vdn_label = 'ABSORPTION'       THEN 'ABSORPTION'
+    ELSE 'RESTO'
+  END AS vdn_aggregation
+FROM keepcoding.ivr_calls;
+
+--5. Generar los campos document_type y document_identification
+
+WITH doc_type AS (
+  SELECT
+    ivr_id,
+    document_type
+  FROM (
+    SELECT
+      ivr_id,
+      document_type,
+      ROW_NUMBER() OVER (PARTITION BY ivr_id ORDER BY start_date DESC) AS rn
+    FROM keepcoding.ivr_detail
+    
+  )
+  WHERE rn = 1
+),
+doc_ident AS (
+  SELECT
+    ivr_id,
+    document_identification
+  FROM (
+    SELECT
+      ivr_id,
+      document_identification,
+      ROW_NUMBER() OVER (PARTITION BY ivr_id ORDER BY start_date DESC) AS rn
+    FROM keepcoding.ivr_detail
+  )
+  WHERE rn = 1
+)
+SELECT
+  dt.ivr_id,
+  dt.document_type,
+  di.document_identification
+FROM doc_type dt
+LEFT JOIN doc_ident di ON dt.ivr_id = di.ivr_id;
+
+--6. Generar el campo customer_phone
+WITH telfs AS (
+  SELECT
+    ivr_id,
+    customer_phone,
+    ROW_NUMBER() OVER (
+      PARTITION BY ivr_id
+      ORDER BY start_date DESC
+    ) AS rn
+  FROM keepcoding.ivr_detail 
+  
+)
+SELECT
+  ivr_id,
+  customer_phone
+FROM telfs
+WHERE rn = 1;
+
+--7. Generar el campo billing_account_id
+WITH cuentas AS (
+  SELECT
+    ivr_id,
+  billing_account_id,
+    ROW_NUMBER() OVER (
+      PARTITION BY ivr_id
+      ORDER BY start_date DESC
+    ) AS rown
+  FROM keepcoding.ivr_detail
+  
+)
+SELECT
+  ivr_id,
+  billing_account_id
+FROM cuentas
+WHERE rown = 1;
+
+--8. Generar el campo masiva_lg
+SELECT
+  ivr_id,
+  MAX(CASE WHEN module_name = 'AVERIA_MASIVA' THEN 1 ELSE 0 END) AS masiva_lg
+FROM keepcoding.ivr_modules
+GROUP BY ivr_id;
+--9. Generar el campo info_by_phone_lg
+SELECT
+  ivr_id,
+  CASE 
+    WHEN SUM(CASE 
+               WHEN step_name = 'CUSTOMERINFOBYPHONE.TX' 
+                AND step_result = 'OK' 
+               THEN 1 ELSE 0 
+             END) > 0 
+    THEN 1 
+    ELSE 0 
+  END AS info_by_phone
+FROM keepcoding.ivr_steps
+GROUP BY ivr_id;
+
+--10. Generar el campo info_by_dni_lg
+SELECT
+  ivr_id,
+  CASE 
+    WHEN SUM(
+      CASE 
+        WHEN step_name = 'CUSTOMERINFOBYDNI.TX' 
+         AND step_result = 'OK' 
+        THEN 1 ELSE 0 
+      END
+    ) > 0 
+    THEN 1 
+    ELSE 0 
+  END AS info_by_dni_lg
+FROM keepcoding.ivr_steps 
+GROUP BY ivr_id;
+
+--11. Generar los campos repeated_phone_24H, cause_recall_phone_24H
+WITH base AS (
+  SELECT
+    c.ivr_id AS calls_ivr_id,
+    c.phone_number,
+    c.start_date,
+    LAG(start_date) OVER (PARTITION BY phone_number ORDER BY start_date) AS prev_call,
+    LEAD(start_date) OVER (PARTITION BY phone_number ORDER BY start_date) AS next_call
+  FROM keepcoding.ivr_calls c
+)
+SELECT
+  calls_ivr_id,
+  phone_number,
+  start_date,
+  CASE 
+    WHEN prev_call IS NOT NULL
+         AND TIMESTAMP_DIFF(start_date, prev_call, HOUR) <= 24
+    THEN 1 ELSE 0 
+  END AS repeated_phone_24H,
+  CASE 
+    WHEN next_call IS NOT NULL
+         AND TIMESTAMP_DIFF(next_call, start_date, HOUR) <= 24
+    THEN 1 ELSE 0 
+  END AS cause_recall_phone_24H
+FROM base;
+
+--12. CREAR TABLA DE ivr_summary
+CREATE OR REPLACE TABLE keepcoding.ivr_summary AS
+WITH base AS (
+  SELECT DISTINCT
+    ivr_id,
+    phone_number,
+    ivr_result,
+    start_date,
+    end_date,
+    total_duration,
+    customer_segment,
+    ivr_language,
+    steps_module,
+    module_aggregation
+  FROM keepcoding.ivr_detail
+),
+
+-- 4 vdn_aggregation
+vdn AS (
+  SELECT
+    ivr_id,
+    CASE
+      WHEN STARTS_WITH(vdn_label, 'ATC')  THEN 'FRONT'
+      WHEN STARTS_WITH(vdn_label, 'TECH') THEN 'TECH'
+      WHEN vdn_label = 'ABSORPTION'       THEN 'ABSORPTION'
+      ELSE 'RESTO'
+    END AS vdn_aggregation
+  FROM keepcoding.ivr_calls
+),
+
+-- 5 document_type + document_identification
+doc_type AS (
+  SELECT
+    ivr_id,
+    document_type
+  FROM (
+    SELECT
+      ivr_id,
+      document_type,
+      ROW_NUMBER() OVER (PARTITION BY ivr_id ORDER BY start_date DESC) AS rn
+    FROM keepcoding.ivr_detail
+      )
+  WHERE rn = 1
+),
+
+-- 5B document_identification
+doc_ident AS (
+  SELECT
+    ivr_id,
+    document_identification
+  FROM (
+    SELECT
+      ivr_id,
+      document_identification,
+      ROW_NUMBER() OVER (PARTITION BY ivr_id ORDER BY start_date DESC) AS rn
+    FROM keepcoding.ivr_detail
+    
+  )
+  WHERE rn = 1
+),
+
+-- 6 customer_phone
+telfs AS (
+  SELECT
+    ivr_id,
+    customer_phone
+  FROM (
+    SELECT
+      ivr_id,
+      customer_phone,
+      ROW_NUMBER() OVER (PARTITION BY ivr_id ORDER BY start_date DESC) AS rn
+    FROM keepcoding.ivr_detail
+    WHERE customer_phone IS NOT NULL AND UPPER(customer_phone) <> 'UNKNOWN'
+  )
+  WHERE rn = 1
+),
+
+-- 7 billing_account_id
+cuentas AS (
+  SELECT
+    ivr_id,
+    billing_account_id
+  FROM (
+    SELECT
+      ivr_id,
+      billing_account_id,
+      ROW_NUMBER() OVER (PARTITION BY ivr_id ORDER BY start_date DESC) AS rown
+    FROM keepcoding.ivr_detail
+    WHERE billing_account_id IS NOT NULL AND UPPER(billing_account_id) <> 'UNKNOWN'
+  )
+  WHERE rown = 1
+),
+
+-- 8 masiva_lg
+masiva AS (
+  SELECT
+    ivr_id,
+    MAX(CASE WHEN module_name = 'AVERIA_MASIVA' THEN 1 ELSE 0 END) AS masiva_lg
+  FROM keepcoding.ivr_modules
+  GROUP BY ivr_id
+),
+
+-- 9 info_by_phone_lg
+phone_lg AS (
+  SELECT
+    ivr_id,
+    CASE WHEN SUM(CASE WHEN step_name = 'CUSTOMERINFOBYPHONE.TX' AND step_result = 'OK' THEN 1 ELSE 0 END) > 0
+         THEN 1 ELSE 0 END AS info_by_phone_lg
+  FROM keepcoding.ivr_steps
+  GROUP BY ivr_id
+),
+
+-- 10 info_by_dni_lg
+dni_lg AS (
+  SELECT
+    ivr_id,
+    CASE WHEN SUM(CASE WHEN step_name = 'CUSTOMERINFOBYDNI.TX' AND step_result = 'OK' THEN 1 ELSE 0 END) > 0
+         THEN 1 ELSE 0 END AS info_by_dni_lg
+  FROM keepcoding.ivr_steps
+  GROUP BY ivr_id
+),
+
+-- 11 repeated_phone_24H / cause_recall_phone_24H
+recalls AS (
+  SELECT
+    ivr_id,
+    phone_number,
+    start_date,
+
+    -- flag de llamada en las 24h anteriores (inmediata anterior)
+    CASE 
+      WHEN LAG(start_date) OVER (PARTITION BY phone_number ORDER BY start_date) IS NOT NULL
+       AND TIMESTAMP_DIFF(
+             start_date, 
+             LAG(start_date) OVER (PARTITION BY phone_number ORDER BY start_date), 
+             HOUR
+           ) <= 24
+      THEN 1 ELSE 0
+    END AS repeated_phone_24H,
+
+    -- flag de llamada en las 24h posteriores (inmediata siguiente)
+    CASE 
+      WHEN LEAD(start_date) OVER (PARTITION BY phone_number ORDER BY start_date) IS NOT NULL
+       AND TIMESTAMP_DIFF(
+             LEAD(start_date) OVER (PARTITION BY phone_number ORDER BY start_date), 
+             start_date, 
+             HOUR
+           ) <= 24
+      THEN 1 ELSE 0
+    END AS cause_recall_phone_24H
+
+  FROM keepcoding.ivr_calls
+)
+
+
+-- ensamblado final
+SELECT
+  base.ivr_id,
+  base.phone_number,
+  base.ivr_result,
+  vdn.vdn_aggregation,
+  base.start_date,
+  base.end_date,
+  base.total_duration,
+  base.customer_segment,
+  base.ivr_language,
+  base.steps_module,
+  base.module_aggregation,
+  doc_type.document_type,
+  doc_ident.document_identification,
+  telfs.customer_phone,
+  cuentas.billing_account_id,
+  masiva.masiva_lg,
+  phone_lg.info_by_phone_lg,
+  dni_lg.info_by_dni_lg,
+  recalls.repeated_phone_24H,
+  recalls.cause_recall_phone_24H
+FROM base
+LEFT JOIN vdn       ON base.ivr_id = vdn.ivr_id
+LEFT JOIN doc_type  ON base.ivr_id = doc_type.ivr_id
+LEFT JOIN doc_ident ON base.ivr_id = doc_ident.ivr_id
+LEFT JOIN telfs     ON base.ivr_id = telfs.ivr_id
+LEFT JOIN cuentas   ON base.ivr_id = cuentas.ivr_id
+LEFT JOIN masiva    ON base.ivr_id = masiva.ivr_id
+LEFT JOIN phone_lg  ON base.ivr_id = phone_lg.ivr_id
+LEFT JOIN dni_lg    ON base.ivr_id = dni_lg.ivr_id
+LEFT JOIN recalls   ON base.ivr_id = recalls.ivr_id;
+
+--13. CREAR FUNCIÓN DE LIMPIEZA DE ENTEROS
+
+CREATE OR REPLACE FUNCTION keepcoding.clean_integer(value INT64)
+RETURNS INT64
+AS (
+  IFNULL(value, -999999)
+);
+
